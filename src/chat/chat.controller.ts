@@ -19,18 +19,6 @@ import { User } from 'src/common/decorator/user.decorator';
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
-  @Get()
-  async getChatRooms(@Query('people') max: string) {
-    if (max) return await this.chatService.getChatRooms(max); // URL Query 존재시 해당 정원 방 목록 조회
-    return await this.chatService.getChatRooms();
-  }
-
-  @Post()
-  async openRoom(@Body() body: CreateChatRoomDTO, @User() user: object) {
-    const result = await this.chatService.createChatRoom(body, user);
-    return { isSuccessful: result };
-  }
-
   @Patch()
   async updateRoom(@Body() body: UpdateChatRoomDTO, @User() user: object) {
     return;
