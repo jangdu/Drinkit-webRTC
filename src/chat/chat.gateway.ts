@@ -5,8 +5,7 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
-import { redis } from 'src/redis';
-import { JoinMessage } from './types/Socket.message';
+import { JoinMessage, UpdateMessage } from './types/Socket.message';
 import { UseGuards } from '@nestjs/common';
 import { JwtGuard } from 'src/common/guard/auth.guard';
 import { ChatUser } from './types/ChatUser.type';
@@ -24,7 +23,6 @@ import { RoomInfo } from './types/ChatRoom.type';
   },
 })
 export class ChatGateway {
-  protected readonly redis = redis.client;
   constructor(private readonly chatService: ChatService) {}
 
   // Read room list by maxNumberOfPerson or null.
@@ -42,11 +40,8 @@ export class ChatGateway {
   async openChatRoom(
     @MessageBody() data: JoinMessage,
     @ConnectedSocket() client: Socket,
-    @User() user: ChatUser,
   ) {
-    const roomId = await this.redis.get('roomCnt');
     const roomInfo: RoomInfo = {
-      roomId,
       roomOwner: client.id,
       name: data.roomName,
       maxNumberOfPerson: data.maxNumberOfPerson,
@@ -61,7 +56,7 @@ export class ChatGateway {
         message: 'fail to create room. Please try again few minutes later',
       };
 
-    client.join(data.roomName);
+    client.join(data.roomName); // join 실행시 client.rooms = [ client.id, data.roomName ]
 
     // Redis createRoom
     client.emit('welcome', `${data.nickname}님이 입장하셨습니다.`);
@@ -69,11 +64,26 @@ export class ChatGateway {
 
   // Update room
   @SubscribeMessage('updateRoom')
-  async updateChatRoom() {}
+  async updateChatRoom(
+    @MessageBody() data: UpdateMessage,
+    @ConnectedSocket() client: Socket,
+  ) {
+    await this.chatService.updateChatRoom(data, client.id);
+  }
 
   // Delete room
   @SubscribeMessage('deleteRoom')
-  async closeChatRoom() {}
+  async closeChatRoom(
+    @MessageBody() data: UpdateMessage,
+    @ConnectedSocket() client: Socket,
+  ) {
+    const roomName = Array.from(client.rooms)[1];
+
+    client.in(roomName).disconnectSockets();
+    client.disconnect(true);
+
+    await this.chatService.closeChatRoom(client.id);
+  }
 
   // Send message to people in the room.
   @SubscribeMessage('sendChat')
