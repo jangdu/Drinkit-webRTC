@@ -12,10 +12,17 @@ export class JwtGuard implements CanActivate {
   ): boolean | Promise<boolean> | Observable<boolean> {
     const client = context.switchToWs().getClient();
 
-    const accessToken = client.request.headers?.AccessToken?.replace(
-      'Bearer ',
-      '',
-    );
+    let accessToken;
+    let refreshToken;
+
+    client.request.headers.cookie?.split('; ').forEach((cookie) => {
+      const datas = cookie.split('=');
+      datas[0] === 'AccessToken'
+        ? (accessToken = datas[1].replace('Bearer ', ''))
+        : datas[0] === 'RefreshToken'
+        ? (refreshToken = datas[1].replace('Bearer ', ''))
+        : null;
+    });
 
     if (!accessToken) throw new UnauthorizedException('Please login first');
 
