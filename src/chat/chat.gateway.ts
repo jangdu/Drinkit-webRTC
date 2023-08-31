@@ -78,7 +78,7 @@ export class ChatGateway {
     return;
   }
 
-  // Delete room
+  // 방 삭제 ( 연결된 모든 유저 연결 해지 및 방 삭제 )
   @SubscribeMessage('deleteRoom')
   async closeChatRoom(
     @MessageBody() data: UpdateMessage,
@@ -90,6 +90,13 @@ export class ChatGateway {
     client.disconnect(true);
 
     await this.chatService.closeChatRoom(client.id);
+  }
+
+  // 방 나오기
+  @SubscribeMessage('outRoom')
+  async outChatRoom(@ConnectedSocket() client: Socket) {
+    const roomName = Array.from(client.rooms)[1];
+    client.leave(roomName);
   }
 
   // Send message to people in the room.
