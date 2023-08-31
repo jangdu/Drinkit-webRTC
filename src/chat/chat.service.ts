@@ -1,6 +1,10 @@
 import { redis } from './../redis';
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { CreateChatRoomDTO, UpdateChatRoomDTO } from './types/ChatRoom.type';
+import {
+  CreateChatRoomDTO,
+  UpdateChatRoomDTO,
+  UpdateRoom,
+} from './types/ChatRoom.type';
 
 @Injectable()
 export class ChatService {
@@ -30,23 +34,55 @@ export class ChatService {
     }
   }
 
-  async updateChatRoom(dto: UpdateChatRoomDTO, clientId: string) {
-    const datas = Object.entries(dto);
+  async updateChatRoom(dto: UpdateChatRoomDTO, roomId: string) {
+    const datas: UpdateRoom = {};
+    dto.changeMax === undefined ? null : (datas.changeMax = dto.changeMax);
+    dto.roomName === undefined ? null : (datas.roomName = dto.roomName);
+    dto.password === undefined ? null : (datas.password = dto.password);
 
-    if (datas.length === 0)
+    if (Object.keys(datas).length === 0)
       throw new BadRequestException('There is no data to update.');
+
     const room = (
       await this.redis.json.get('chatRooms', {
-        path: `$.${dto.maxNumberOfPerson}.${dto.roomId}`,
+        path: `$.${dto.maxNumberOfPerson}.${roomId}`,
       })
     )[0];
 
-    if (room.roomOwner !== clientId)
-      throw new BadRequestException(
-        'Only can change information by room owner',
-      );
+    const includeChangeMax: boolean = Object.keys(datas).includes('changeMax'); // 정원 변경을 하려 하는지 안하는지 체크
 
-    const includeChangeMax = Object.keys(dto).includes('changeMax'); // 정원 변경을 하려 하는지 안하는지 체크
+    if (includeChangeMax) {
+      if (
+        dto.currentNumberOfPerson > datas.changeMax &&
+        datas.changeMax > 4 &&
+        datas.changeMax < 2
+      )
+        throw new BadRequestException(
+          'Because of wrong number of Max, it is not possible to change',
+        );
+
+      Object.entries(datas).forEach((data) => {
+        room[data[0]] = data[1];
+      });
+      await this.redis.json.del(
+        'chatRooms',
+        `$.${dto.maxNumberOfPerson}.${roomId}`,
+      );
+      await this.redis.json.set(
+        'chatRooms',
+        `$.${datas.changeMax}.${roomId}`,
+        room,
+      );
+    } else {
+      Object.entries(datas).forEach((data) => {
+        room[data[0]] = data[1];
+      });
+      await this.redis.json.set(
+        'chatRooms',
+        `$.${dto.maxNumberOfPerson}.${roomId}`,
+        room,
+      );
+    }
     return;
   }
 
