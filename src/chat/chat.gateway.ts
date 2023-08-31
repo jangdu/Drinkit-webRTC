@@ -13,7 +13,7 @@ import { User } from 'src/common/decorator/user.decorator';
 import { ChatService } from './chat.service';
 import { RoomInfo } from './types/ChatRoom.type';
 
-// @UseGuards(JwtGuard) 메인서버와 아직 미연동 관계로 주석처리
+// @UseGuards(JwtGuard) // 메인서버와 아직 미연동 관계로 주석처리
 @WebSocketGateway(8000, {
   namespace: 'chat',
   cookie: true,
@@ -40,12 +40,13 @@ export class ChatGateway {
   async openChatRoom(
     @MessageBody() data: JoinMessage,
     @ConnectedSocket() client: Socket,
+    @User() user: ChatUser,
   ) {
     const roomInfo: RoomInfo = {
       roomOwner: client.id,
-      name: data.roomName,
+      roomName: data.roomName,
       maxNumberOfPerson: data.maxNumberOfPerson,
-      currentUser: [client.id],
+      currentUser: [user.nickname],
     };
     if (data.password) roomInfo.password = data.password;
 
@@ -68,7 +69,9 @@ export class ChatGateway {
     @MessageBody() data: UpdateMessage,
     @ConnectedSocket() client: Socket,
   ) {
-    await this.chatService.updateChatRoom(data, client.id);
+    if (data.roomOwner !== client.id)
+      await this.chatService.updateChatRoom(data, client.id);
+    return;
   }
 
   // Delete room
@@ -94,6 +97,8 @@ export class ChatGateway {
     const roomName = Array.from(client.rooms)[1];
 
     client.to(roomName).emit('broadcastMessage', data);
+
+    return data;
   }
 
   // Create peerConnection

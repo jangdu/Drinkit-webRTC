@@ -11,9 +11,9 @@ export class RedisClient {
     const chatRooms = await this.client.json.get('chatRooms');
 
     const chatRoomsObj = {
-      '2': [],
-      '3': [],
-      '4': [],
+      '2': {},
+      '3': {},
+      '4': {},
     };
 
     if (!roomCnt && !chatRooms) {

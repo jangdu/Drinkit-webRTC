@@ -2,7 +2,7 @@ import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export type RoomInfo = {
   roomOwner: string;
-  name: string;
+  roomName: string;
   maxNumberOfPerson: number;
   currentUser: Array<string>;
   password?: string;
@@ -10,13 +10,10 @@ export type RoomInfo = {
 
 export class CreateChatRoomDTO {
   @IsString()
-  roomId?: string;
-
-  @IsString()
   roomOwner: string;
 
   @IsString()
-  name: string;
+  roomName: string;
 
   @IsNumber()
   maxNumberOfPerson: number;
@@ -30,18 +27,23 @@ export class CreateChatRoomDTO {
 }
 
 export class UpdateChatRoomDTO {
-  @IsOptional()
   @IsString()
-  name?: string;
+  roomId: string;
+
+  @IsString()
+  roomOwner: string;
+
+  @IsString()
+  roomName: string;
+
+  @IsNumber()
+  maxNumberOfPerson: number;
 
   @IsOptional()
   @IsNumber()
-  maxNumberOfPerson?: number;
+  changeMax?: number;
 
   @IsOptional()
   @IsString()
   password?: string;
-
-  @IsNumber()
-  currentNumberOfPerson: number;
 }
