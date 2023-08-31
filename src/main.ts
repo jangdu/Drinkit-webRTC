@@ -3,10 +3,11 @@ import { AppModule } from './app.module';
 import 'dotenv/config';
 import { redis } from './redis';
 import { HttpExceptionFilter } from './common/exceptions/http.exceptions.filter';
+import { urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
+  app.use(urlencoded({ extended: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
 
   // CORS

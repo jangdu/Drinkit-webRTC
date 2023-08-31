@@ -35,22 +35,18 @@ export class ChatService {
 
     if (datas.length === 0)
       throw new BadRequestException('There is no data to update.');
+    const room = (
+      await this.redis.json.get('chatRooms', {
+        path: `$.${dto.maxNumberOfPerson}.${dto.roomId}`,
+      })
+    )[0];
+
+    if (room.roomOwner !== clientId)
+      throw new BadRequestException(
+        'Only can change information by room owner',
+      );
 
     const includeChangeMax = Object.keys(dto).includes('changeMax'); // 정원 변경을 하려 하는지 안하는지 체크
-
-    if (includeChangeMax) {
-    } else {
-      datas.forEach(async (d) => {
-        const obj = {};
-        obj[d[0]] = d[1];
-        await this.redis.json.set(
-          'chatRooms',
-          `$.${dto.maxNumberOfPerson}`,
-          obj,
-        );
-      });
-    }
-
     return;
   }
 
