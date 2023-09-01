@@ -13,7 +13,7 @@ import { User } from 'src/common/decorator/user.decorator';
 import { ChatService } from './chat.service';
 import { RoomInfo } from './types/ChatRoom.type';
 
-// @UseGuards(JwtGuard) // 메인서버와 아직 미연동 관계로 주석처리
+@UseGuards(JwtGuard) // 메인서버와 아직 미연동 관계로 주석처리
 @WebSocketGateway(8000, {
   namespace: 'chat',
   cookie: true,
@@ -93,10 +93,11 @@ export class ChatGateway {
   broadcastRoom(
     @MessageBody() data: string,
     @ConnectedSocket() client: Socket,
+    @User() user,
   ) {
     const roomName = Array.from(client.rooms)[1];
 
-    client.to(roomName).emit('broadcastMessage', data);
+    client.to(roomName).emit('broadcastMessage', `${user.nickname}: ${data}`);
 
     return data;
   }
@@ -110,5 +111,28 @@ export class ChatGateway {
     const roomName = Array.from(client.rooms)[1];
 
     client.to(roomName).emit('candidateReciver', data);
+  }
+
+  @SubscribeMessage('joinRoom')
+  async joinChatRoom(
+    @MessageBody() data,
+    @ConnectedSocket() client: Socket,
+    @User() user: ChatUser,
+  ) {
+    const roomName = data.roomId;
+
+    client.join(roomName);
+
+    client.emit(
+      'joinedRoom',
+      `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
+    );
+
+    client
+      .to(roomName)
+      .emit(
+        'userJoined',
+        `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
+      );
   }
 }

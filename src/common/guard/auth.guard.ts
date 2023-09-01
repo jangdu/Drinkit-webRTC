@@ -18,9 +18,9 @@ export class JwtGuard implements CanActivate {
     client.request.headers.cookie?.split('; ').forEach((cookie) => {
       const datas = cookie.split('=');
       datas[0] === 'AccessToken'
-        ? (accessToken = datas[1].replace('Bearer ', ''))
+        ? (accessToken = datas[1].replace('Bearer%20', ''))
         : datas[0] === 'RefreshToken'
-        ? (refreshToken = datas[1].replace('Bearer ', ''))
+        ? (refreshToken = datas[1].replace('Bearer%20', ''))
         : null;
     });
 
