@@ -6,10 +6,10 @@ export type JoinMessage = {
 };
 
 export type UpdateMessage = {
-  roomId: string;
   roomOwner: string;
-  roomName: string;
   maxNumberOfPerson: number;
-  password?: string;
   currentNumberOfPerson: number;
+  roomName?: string;
+  changeMax?: number;
+  password?: string;
 };

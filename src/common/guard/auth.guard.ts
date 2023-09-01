@@ -30,15 +30,13 @@ export class JwtGuard implements CanActivate {
 
     if (!payload) {
       const refreshPayload = this.jwtVerify(refreshToken);
-
       if (!refreshPayload)
         throw new UnauthorizedException('Please login again');
-
       client.User = refreshPayload;
       return true;
     }
-    client.User = payload;
 
+    client.User = payload;
     return true;
   }
 

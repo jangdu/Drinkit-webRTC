@@ -28,16 +28,16 @@ export class CreateChatRoomDTO {
 
 export class UpdateChatRoomDTO {
   @IsString()
-  roomId: string;
-
-  @IsString()
   roomOwner: string;
 
   @IsString()
-  roomName: string;
+  roomName?: string;
 
   @IsNumber()
   maxNumberOfPerson: number;
+
+  @IsNumber()
+  currentNumberOfPerson: number;
 
   @IsOptional()
   @IsNumber()
@@ -47,3 +47,9 @@ export class UpdateChatRoomDTO {
   @IsString()
   password?: string;
 }
+
+export type UpdateRoom = {
+  roomName?: string;
+  changeMax?: number;
+  password?: string;
+};

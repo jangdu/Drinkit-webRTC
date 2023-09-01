@@ -6,7 +6,7 @@ import {
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
 import { JoinMessage, UpdateMessage } from './types/Socket.message';
-import { UseGuards } from '@nestjs/common';
+import { BadRequestException, UseGuards } from '@nestjs/common';
 import { JwtGuard } from 'src/common/guard/auth.guard';
 import { ChatUser } from './types/ChatUser.type';
 import { User } from 'src/common/decorator/user.decorator';
@@ -66,15 +66,19 @@ export class ChatGateway {
   // Update room
   @SubscribeMessage('updateRoom')
   async updateChatRoom(
-    @MessageBody() data: UpdateMessage,
+    @MessageBody() data: UpdateMessage | Array<any>,
     @ConnectedSocket() client: Socket,
   ) {
-    if (data.roomOwner !== client.id)
-      await this.chatService.updateChatRoom(data, client.id);
+    if (data[0].roomOwner !== client.id)
+      throw new BadRequestException(
+        'Only can change information by room owner',
+      );
+
+    await this.chatService.updateChatRoom(data[0], data[1]);
     return;
   }
 
-  // Delete room
+  // 방 삭제 ( 연결된 모든 유저 연결 해지 및 방 삭제 )
   @SubscribeMessage('deleteRoom')
   async closeChatRoom(
     @MessageBody() data: UpdateMessage,
@@ -86,6 +90,13 @@ export class ChatGateway {
     client.disconnect(true);
 
     await this.chatService.closeChatRoom(client.id);
+  }
+
+  // 방 나오기
+  @SubscribeMessage('outRoom')
+  async outChatRoom(@ConnectedSocket() client: Socket) {
+    const roomName = Array.from(client.rooms)[1];
+    client.leave(roomName);
   }
 
   // Send message to people in the room.
