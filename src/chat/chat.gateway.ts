@@ -6,7 +6,7 @@ import {
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
 import { JoinMessage, UpdateMessage } from './types/Socket.message';
-import { BadRequestException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, UseGuards } from '@nestjs/common';
 import { JwtGuard } from 'src/common/guard/auth.guard';
 import { ChatUser } from './types/ChatUser.type';
 import { User } from 'src/common/decorator/user.decorator';
@@ -115,13 +115,14 @@ export class ChatGateway {
 
   // Create peerConnection
   @SubscribeMessage('candidate')
-  connectMediaStream(
-    @MessageBody() data: string,
-    @ConnectedSocket() client: Socket,
-  ) {
+  connectMediaStream(@Body() data, @ConnectedSocket() client: Socket) {
     const roomName = Array.from(client.rooms)[1];
 
     client.to(roomName).emit('candidateReciver', data);
+    client.to(data.candidateReceiveID).emit('getCandidate', {
+      candidate: data.candidate,
+      candidateSendID: data.candidateSendID,
+    });
   }
 
   @SubscribeMessage('joinRoom')
@@ -145,5 +146,16 @@ export class ChatGateway {
         'userJoined',
         `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
       );
+  }
+
+  @SubscribeMessage('shareId')
+  async shared(
+    @MessageBody() data,
+    @ConnectedSocket() client: Socket,
+    @User() user: ChatUser,
+  ) {
+    console.log(data, user.nickname);
+
+    client.to(Array.from(client.rooms)[1]).emit('sharedId', data);
   }
 }
