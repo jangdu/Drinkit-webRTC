@@ -26,10 +26,10 @@ export class JwtGuard implements CanActivate {
 
     if (!accessToken) throw new UnauthorizedException('Please login first');
 
-    const payload = this.jwtVerify(accessToken);
+    const payload = this.jwtVerifyAccess(accessToken);
 
     if (!payload) {
-      const refreshPayload = this.jwtVerify(refreshToken);
+      const refreshPayload = this.jwtVerifyRefresh(refreshToken);
       if (!refreshPayload)
         throw new UnauthorizedException('Please login again');
       client.User = refreshPayload;
@@ -40,9 +40,20 @@ export class JwtGuard implements CanActivate {
     return true;
   }
 
-  jwtVerify(token: string): string | jwt.JwtPayload | boolean {
+  jwtVerifyAccess(token: string): string | jwt.JwtPayload | boolean {
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET_ACCESS, {
+        ignoreExpiration: false,
+      });
+      return payload;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  jwtVerifyRefresh(token: string): string | jwt.JwtPayload | boolean {
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET_REFRESH, {
         ignoreExpiration: false,
       });
       return payload;
