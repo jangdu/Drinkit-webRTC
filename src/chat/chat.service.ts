@@ -25,7 +25,7 @@ export class ChatService {
     return result;
   }
 
-  async createChatRoom(data: CreateChatRoomDTO): Promise<boolean> {
+  async createChatRoom(data: CreateChatRoomDTO): Promise<string | boolean> {
     try {
       const result = await this.createRoomOnRedis(data);
       return result;
@@ -95,7 +95,7 @@ export class ChatService {
     }
   }
 
-  async createRoomOnRedis(data: CreateChatRoomDTO): Promise<boolean> {
+  async createRoomOnRedis(data: CreateChatRoomDTO): Promise<string | boolean> {
     try {
       const roomCnt = await this.redis.get('roomCnt');
 
@@ -106,7 +106,7 @@ export class ChatService {
       );
 
       await this.redis.incr('roomCnt');
-      return true;
+      return roomCnt;
     } catch (e) {
       return false;
     }
