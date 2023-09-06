@@ -18,12 +18,17 @@ import { RoomInfo } from './types/ChatRoom.type';
   namespace: 'chat',
   cookie: true,
   cors: {
-    origin: '*',
+    origin: ['http://localhost:8000', 'http://localhost:3200'],
     credentials: true,
   },
 })
 export class ChatGateway {
   constructor(private readonly chatService: ChatService) {}
+
+  @SubscribeMessage('disconnect')
+  async checkPing(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
+    return { message: 'disconnected from websocket server' };
+  }
 
   // Read room list by maxNumberOfPerson or null.
   @SubscribeMessage('getRooms')
@@ -61,6 +66,8 @@ export class ChatGateway {
 
     // Redis createRoom
     client.emit('welcome', `${data.nickname}님이 입장하셨습니다.`);
+
+    return { roomId: createResult, ...roomInfo };
   }
 
   // Update room
