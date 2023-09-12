@@ -30,6 +30,7 @@ export class ChatService {
   async createChatRoom(data: CreateChatRoomDTO): Promise<string | boolean> {
     try {
       const result = await this.createRoomOnRedis(data);
+      console.log('service =>', result);
       return result;
     } catch (e) {
       throw new BadRequestException('fail to create room');
@@ -97,7 +98,7 @@ export class ChatService {
     }
   }
 
-  async createRoomOnRedis(data: CreateChatRoomDTO): Promise<string | boolean> {
+  async createRoomOnRedis(data: CreateChatRoomDTO): Promise<boolean> {
     try {
       const roomCnt = await this.redis.get('roomCnt');
 
@@ -108,7 +109,7 @@ export class ChatService {
       );
 
       await this.redis.incr('roomCnt');
-      return roomCnt;
+      return true;
     } catch (e) {
       return false;
     }
@@ -124,7 +125,7 @@ export class ChatService {
     await this.redis.json.set(
       'chatRooms',
       `.${data.maxNumberOfPerson}.${data.roomId}`,
-      JSON.stringify(room),
+      room,
     );
 
     return;
@@ -132,23 +133,19 @@ export class ChatService {
 
   async outRoom(client: Socket, data?: RoomInfo) {
     if (data) {
-      const room = JSON.parse(
-        String(
-          await this.redis.json.get('chatRooms', {
-            path: `.${data.maxNumberOfPerson}.${data.roomId}`,
-          }),
-        ),
-      );
-      const idx = room.currentUser.findIndex((id) => id === client.id);
+      const room = await this.redis.json.get('chatRooms', {
+        path: `.${data.maxNumberOfPerson}.${data.roomId}`,
+      });
+      const idx = room['currentUser'].findIndex((id) => id === client.id);
       if (idx === -1)
         throw new BadRequestException('There is no ID in this room');
 
-      room.currentUser.splice(idx, 1);
+      room['currentUser'].splice(idx, 1);
 
       await this.redis.json.set(
         'chatRooms',
         `.${data.maxNumberOfPerson}.${data.roomId}`,
-        JSON.stringify(room),
+        room,
       );
     } else {
     }

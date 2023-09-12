@@ -108,8 +108,6 @@ export class ChatGateway implements NestGateway {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: RoomInfo,
   ) {
-    console.log('hi');
-
     this.chatService.outRoom(client, data);
     const roomName = Array.from(client.rooms)[1];
     client.leave(roomName);
