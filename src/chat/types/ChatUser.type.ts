@@ -1,4 +1,4 @@
 export type ChatUser = {
   nickname: string;
-  socketId: string;
+  userId: string;
 };
