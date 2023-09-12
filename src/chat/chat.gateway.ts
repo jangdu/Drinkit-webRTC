@@ -6,12 +6,13 @@ import {
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
 import { JoinMessage, UpdateMessage } from './types/Socket.message';
-import { BadRequestException, Body, UseGuards } from '@nestjs/common';
+import { BadRequestException, UseGuards } from '@nestjs/common';
 import { JwtGuard } from 'src/common/guard/auth.guard';
 import { ChatUser } from './types/ChatUser.type';
 import { User } from 'src/common/decorator/user.decorator';
 import { ChatService } from './chat.service';
 import { RoomInfo } from './types/ChatRoom.type';
+import { NestGateway } from '@nestjs/websockets/interfaces/nest-gateway.interface';
 
 @UseGuards(JwtGuard) // 메인서버와 아직 미연동 관계로 주석처리
 @WebSocketGateway(8000, {
@@ -22,22 +23,24 @@ import { RoomInfo } from './types/ChatRoom.type';
     credentials: true,
   },
 })
-export class ChatGateway {
+export class ChatGateway implements NestGateway {
   constructor(private readonly chatService: ChatService) {}
 
-  @SubscribeMessage('disconnect')
-  async checkPing(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
-    return { message: 'disconnected from websocket server' };
+  @SubscribeMessage('getRooms')
+  async handleConnection(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    client.on('reconnect', () => {
+      console.log(`Client reconnected: ${client.id}`);
+    });
+
+    return await this.chatService.getChatRooms();
   }
 
-  // Read room list by maxNumberOfPerson or null.
-  @SubscribeMessage('getRooms')
-  async getChatRooms(
-    @MessageBody() data: string,
-    @ConnectedSocket() client: Socket,
-  ) {
-    if (data) return await this.chatService.getChatRooms(data);
-    return await this.chatService.getChatRooms();
+  handleDisconnect(@ConnectedSocket() client: Socket) {
+    client.disconnect(true);
+    console.log('socket has disconnected');
   }
 
   // Create room
@@ -51,7 +54,7 @@ export class ChatGateway {
       roomOwner: client.id,
       roomName: data.roomName,
       maxNumberOfPerson: data.maxNumberOfPerson,
-      currentUser: [user.nickname],
+      currentUser: [],
     };
     if (data.password) roomInfo.password = data.password;
 
@@ -101,7 +104,13 @@ export class ChatGateway {
 
   // 방 나오기
   @SubscribeMessage('outRoom')
-  async outChatRoom(@ConnectedSocket() client: Socket) {
+  async outChatRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: RoomInfo,
+  ) {
+    console.log('hi');
+
+    this.chatService.outRoom(client, data);
     const roomName = Array.from(client.rooms)[1];
     client.leave(roomName);
   }
@@ -120,37 +129,21 @@ export class ChatGateway {
     return data;
   }
 
-  // Create peerConnection
-  @SubscribeMessage('candidate')
-  connectMediaStream(@Body() data, @ConnectedSocket() client: Socket) {
-    const roomName = Array.from(client.rooms)[1];
-
-    client.to(roomName).emit('candidateReciver', data);
-    client.to(data.candidateReceiveID).emit('getCandidate', {
-      candidate: data.candidate,
-      candidateSendID: data.candidateSendID,
-    });
-  }
-
   @SubscribeMessage('joinRoom')
   async joinChatRoom(
     @MessageBody() data,
     @ConnectedSocket() client: Socket,
     @User() user: ChatUser,
   ) {
-    const roomName = data.roomId;
+    this.chatService.joinRoom(data, client);
 
-    client.join(roomName);
+    client.join(data.roomId);
 
-    client.emit(
-      'joinedRoom',
-      `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
-    );
-
+    const roomName = data.roomName;
     client
-      .to(roomName)
+      .to(data.roomId)
       .emit(
-        'userJoined',
+        'broadcastMessage',
         `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
       );
   }
@@ -161,8 +154,6 @@ export class ChatGateway {
     @ConnectedSocket() client: Socket,
     @User() user: ChatUser,
   ) {
-    console.log(data, user.nickname);
-
     client.to(Array.from(client.rooms)[1]).emit('sharedId', data);
   }
 }

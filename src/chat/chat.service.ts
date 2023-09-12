@@ -2,9 +2,11 @@ import { redis } from './../redis';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   CreateChatRoomDTO,
+  RoomInfo,
   UpdateChatRoomDTO,
   UpdateRoom,
 } from './types/ChatRoom.type';
+import { Socket } from 'socket.io';
 
 @Injectable()
 export class ChatService {
@@ -102,7 +104,7 @@ export class ChatService {
       await this.redis.json.set(
         'chatRooms',
         `.${data.maxNumberOfPerson}.${roomCnt}`,
-        JSON.stringify(data),
+        JSON.parse(JSON.stringify(data)),
       );
 
       await this.redis.incr('roomCnt');
@@ -110,5 +112,47 @@ export class ChatService {
     } catch (e) {
       return false;
     }
+  }
+
+  async joinRoom(data: RoomInfo, client: Socket) {
+    const room = await this.redis.json.get('chatRooms', {
+      path: `.${data.maxNumberOfPerson}.${data.roomId}`,
+    });
+
+    room['currentUser'].push(client.id);
+
+    await this.redis.json.set(
+      'chatRooms',
+      `.${data.maxNumberOfPerson}.${data.roomId}`,
+      JSON.stringify(room),
+    );
+
+    return;
+  }
+
+  async outRoom(client: Socket, data?: RoomInfo) {
+    if (data) {
+      const room = JSON.parse(
+        String(
+          await this.redis.json.get('chatRooms', {
+            path: `.${data.maxNumberOfPerson}.${data.roomId}`,
+          }),
+        ),
+      );
+      const idx = room.currentUser.findIndex((id) => id === client.id);
+      if (idx === -1)
+        throw new BadRequestException('There is no ID in this room');
+
+      room.currentUser.splice(idx, 1);
+
+      await this.redis.json.set(
+        'chatRooms',
+        `.${data.maxNumberOfPerson}.${data.roomId}`,
+        JSON.stringify(room),
+      );
+    } else {
+    }
+
+    return;
   }
 }
