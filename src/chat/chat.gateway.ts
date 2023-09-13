@@ -24,6 +24,7 @@ import { NestGateway } from '@nestjs/websockets/interfaces/nest-gateway.interfac
   },
 })
 export class ChatGateway implements NestGateway {
+  private connectedClients = new Map<string, any>();
   constructor(private readonly chatService: ChatService) {}
 
   @SubscribeMessage('getRooms')
@@ -31,16 +32,17 @@ export class ChatGateway implements NestGateway {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    client.on('reconnect', () => {
-      console.log(`Client reconnected: ${client.id}`);
-    });
-
+    this.connectedClients.set(client.id, client);
     return await this.chatService.getChatRooms();
   }
 
-  handleDisconnect(@ConnectedSocket() client: Socket) {
-    client.disconnect(true);
-    console.log('socket has disconnected');
+  async handleDisconnect(@ConnectedSocket() client: Socket) {
+    if (this.connectedClients.has(client.id))
+      this.connectedClients.delete(client.id);
+    const user = client['User'];
+
+    const message = await this.chatService.outRoom(user);
+    console.log(message);
   }
 
   // Create room
@@ -51,7 +53,7 @@ export class ChatGateway implements NestGateway {
     @User() user: ChatUser,
   ) {
     const roomInfo: RoomInfo = {
-      roomOwner: client.id,
+      roomOwner: user.nickname,
       roomName: data.roomName,
       maxNumberOfPerson: data.maxNumberOfPerson,
       currentUser: [],
@@ -65,27 +67,10 @@ export class ChatGateway implements NestGateway {
         message: 'fail to create room. Please try again few minutes later',
       };
 
-    client.join(data.roomName); // join 실행시 client.rooms = [ client.id, data.roomName ]
-
     // Redis createRoom
-    client.emit('welcome', `${data.nickname}님이 입장하셨습니다.`);
+    client.emit('welcome', `${user.nickname}님이 입장하셨습니다.`);
 
     return { roomId: createResult, ...roomInfo };
-  }
-
-  // Update room
-  @SubscribeMessage('updateRoom')
-  async updateChatRoom(
-    @MessageBody() data: UpdateMessage | Array<any>,
-    @ConnectedSocket() client: Socket,
-  ) {
-    if (data[0].roomOwner !== client.id)
-      throw new BadRequestException(
-        'Only can change information by room owner',
-      );
-
-    await this.chatService.updateChatRoom(data[0], data[1]);
-    return;
   }
 
   // 방 삭제 ( 연결된 모든 유저 연결 해지 및 방 삭제 )
@@ -93,13 +78,14 @@ export class ChatGateway implements NestGateway {
   async closeChatRoom(
     @MessageBody() data: UpdateMessage,
     @ConnectedSocket() client: Socket,
+    @User() user: ChatUser,
   ) {
     const roomName = Array.from(client.rooms)[1];
 
     client.in(roomName).disconnectSockets();
     client.disconnect(true);
 
-    await this.chatService.closeChatRoom(client.id);
+    await this.chatService.closeChatRoom(user.nickname);
   }
 
   // 방 나오기
@@ -107,9 +93,11 @@ export class ChatGateway implements NestGateway {
   async outChatRoom(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: RoomInfo,
+    @User() user: ChatUser,
   ) {
-    this.chatService.outRoom(client, data);
+    this.chatService.outRoom(user, data);
     const roomName = Array.from(client.rooms)[1];
+    client.to(roomName).emit('outUser', client.id);
     client.leave(roomName);
   }
 
@@ -133,25 +121,19 @@ export class ChatGateway implements NestGateway {
     @ConnectedSocket() client: Socket,
     @User() user: ChatUser,
   ) {
-    this.chatService.joinRoom(data, client);
+    this.chatService.joinRoom(data, user);
 
     client.join(data.roomId);
 
     const roomName = data.roomName;
+
     client
       .to(data.roomId)
       .emit(
         'broadcastMessage',
         `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
       );
-  }
 
-  @SubscribeMessage('shareId')
-  async shared(
-    @MessageBody() data,
-    @ConnectedSocket() client: Socket,
-    @User() user: ChatUser,
-  ) {
-    client.to(Array.from(client.rooms)[1]).emit('sharedId', data);
+    client.to(data.roomId).emit('sharedId', client.id);
   }
 }
