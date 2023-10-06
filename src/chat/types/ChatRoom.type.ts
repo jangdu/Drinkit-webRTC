@@ -6,6 +6,7 @@ export type RoomInfo = {
   maxNumberOfPerson: number;
   currentUser: Array<string>;
   password?: string;
+  roomId?: string;
 };
 
 export class CreateChatRoomDTO {

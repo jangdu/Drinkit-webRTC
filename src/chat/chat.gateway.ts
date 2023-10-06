@@ -6,14 +6,15 @@ import {
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
 import { JoinMessage, UpdateMessage } from './types/Socket.message';
-import { BadRequestException, Body, UseGuards } from '@nestjs/common';
+import { BadRequestException, UseGuards } from '@nestjs/common';
 import { JwtGuard } from 'src/common/guard/auth.guard';
 import { ChatUser } from './types/ChatUser.type';
 import { User } from 'src/common/decorator/user.decorator';
 import { ChatService } from './chat.service';
 import { RoomInfo } from './types/ChatRoom.type';
+import { NestGateway } from '@nestjs/websockets/interfaces/nest-gateway.interface';
 
-@UseGuards(JwtGuard) // 메인서버와 아직 미연동 관계로 주석처리
+@UseGuards(JwtGuard)
 @WebSocketGateway(8000, {
   namespace: 'chat',
   cookie: true,
@@ -22,25 +23,33 @@ import { RoomInfo } from './types/ChatRoom.type';
     credentials: true,
   },
 })
-export class ChatGateway {
+export class ChatGateway implements NestGateway {
+  private connectedClients = new Map<string, any>();
   constructor(private readonly chatService: ChatService) {}
 
-  @SubscribeMessage('disconnect')
-  async checkPing(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
-    return { message: 'disconnected from websocket server' };
-  }
-
-  // Read room list by maxNumberOfPerson or null.
+  // 채팅방 조회
   @SubscribeMessage('getRooms')
-  async getChatRooms(
-    @MessageBody() data: string,
+  async handleConnection(
     @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
   ) {
-    if (data) return await this.chatService.getChatRooms(data);
+    this.connectedClients.set(client.id, client);
+    
     return await this.chatService.getChatRooms();
   }
 
-  // Create room
+  // 연결이 끊어지는 상황을 잡아 그 피어의 ID를 클라이언트에 전송
+  async handleDisconnect(@ConnectedSocket() client: Socket) {
+    if (this.connectedClients.has(client.id)){
+      this.connectedClients.delete(client.id);
+    }
+    
+    const user = client['User'];
+
+    const message = await this.chatService.outRoom(user);
+  }
+
+  // 방 만들기
   @SubscribeMessage('drinkitRoom')
   async openChatRoom(
     @MessageBody() data: JoinMessage,
@@ -48,41 +57,27 @@ export class ChatGateway {
     @User() user: ChatUser,
   ) {
     const roomInfo: RoomInfo = {
-      roomOwner: client.id,
+      roomOwner: user.nickname,
       roomName: data.roomName,
       maxNumberOfPerson: data.maxNumberOfPerson,
-      currentUser: [user.nickname],
+      currentUser: [],
     };
-    if (data.password) roomInfo.password = data.password;
+    
+    if (data.password) {
+      roomInfo.password = data.password;
+    }
 
     const createResult = await this.chatService.createChatRoom(roomInfo);
 
-    if (!createResult)
+    if (!createResult){
       return {
         message: 'fail to create room. Please try again few minutes later',
       };
+    }
 
-    client.join(data.roomName); // join 실행시 client.rooms = [ client.id, data.roomName ]
-
-    // Redis createRoom
-    client.emit('welcome', `${data.nickname}님이 입장하셨습니다.`);
+    client.emit('welcome', `${user.nickname}님이 입장하셨습니다.`);
 
     return { roomId: createResult, ...roomInfo };
-  }
-
-  // Update room
-  @SubscribeMessage('updateRoom')
-  async updateChatRoom(
-    @MessageBody() data: UpdateMessage | Array<any>,
-    @ConnectedSocket() client: Socket,
-  ) {
-    if (data[0].roomOwner !== client.id)
-      throw new BadRequestException(
-        'Only can change information by room owner',
-      );
-
-    await this.chatService.updateChatRoom(data[0], data[1]);
-    return;
   }
 
   // 방 삭제 ( 연결된 모든 유저 연결 해지 및 방 삭제 )
@@ -90,23 +85,30 @@ export class ChatGateway {
   async closeChatRoom(
     @MessageBody() data: UpdateMessage,
     @ConnectedSocket() client: Socket,
+    @User() user: ChatUser,
   ) {
     const roomName = Array.from(client.rooms)[1];
 
     client.in(roomName).disconnectSockets();
     client.disconnect(true);
 
-    await this.chatService.closeChatRoom(client.id);
+    await this.chatService.closeChatRoom(user.nickname);
   }
 
   // 방 나오기
   @SubscribeMessage('outRoom')
-  async outChatRoom(@ConnectedSocket() client: Socket) {
+  async outChatRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: RoomInfo,
+    @User() user: ChatUser,
+  ) {
+    this.chatService.outRoom(user, data);
     const roomName = Array.from(client.rooms)[1];
+    client.to(roomName).emit('outUser', client.id);
     client.leave(roomName);
   }
 
-  // Send message to people in the room.
+  // 모든 사용자에게 메시지 전송
   @SubscribeMessage('sendChat')
   broadcastRoom(
     @MessageBody() data: string,
@@ -120,49 +122,26 @@ export class ChatGateway {
     return data;
   }
 
-  // Create peerConnection
-  @SubscribeMessage('candidate')
-  connectMediaStream(@Body() data, @ConnectedSocket() client: Socket) {
-    const roomName = Array.from(client.rooms)[1];
-
-    client.to(roomName).emit('candidateReciver', data);
-    client.to(data.candidateReceiveID).emit('getCandidate', {
-      candidate: data.candidate,
-      candidateSendID: data.candidateSendID,
-    });
-  }
-
+  // 방에 참가
   @SubscribeMessage('joinRoom')
   async joinChatRoom(
     @MessageBody() data,
     @ConnectedSocket() client: Socket,
     @User() user: ChatUser,
   ) {
-    const roomName = data.roomId;
+    await this.chatService.joinRoom(data, user);
 
-    client.join(roomName);
+    client.join(data.roomId);
 
-    client.emit(
-      'joinedRoom',
-      `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
-    );
+    const roomName = data.roomName;
 
     client
-      .to(roomName)
+      .to(data.roomId)
       .emit(
-        'userJoined',
+        'broadcastMessage',
         `"${user.nickname}"님, "${roomName}" 방에 입장했습니다.`,
       );
-  }
 
-  @SubscribeMessage('shareId')
-  async shared(
-    @MessageBody() data,
-    @ConnectedSocket() client: Socket,
-    @User() user: ChatUser,
-  ) {
-    console.log(data, user.nickname);
-
-    client.to(Array.from(client.rooms)[1]).emit('sharedId', data);
+    client.to(data.roomId).emit('sharedId', client.id);
   }
 }
